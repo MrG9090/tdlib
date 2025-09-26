@@ -32,6 +32,7 @@ pushd "$TDLIB_INSTALL_DIR/tdlib/java/org/drinkless/tdlib" > /dev/null || exit 1
 sed -i".bak" -E '/ {4}static \{/,+7d' TdApi.java || exit 1
 sed -i".bak" "s/&#039;/'/g" TdApi.java || exit 1
 sed -i".bak" -E '/ {4}static \{/,+7d' Client.java || exit 1
+sed -i".bak" "s/Function /Function<?> /g" Client.java || exit 1
 rm *.bak
 popd > /dev/null
 
