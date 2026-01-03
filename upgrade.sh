@@ -7,7 +7,12 @@ PASSWORD=$2
 SECONDS=0
 pushd tdlib > /dev/null
 
-REMOTE="https://${USERNAME}:${PASSWORD}@$(git remote get-url origin | cut -c 9-)"
+ORIGINAL_REMOTE=$(git remote get-url origin)
+if [[ "$ORIGINAL_REMOTE" =~ ^ssh://git@.* ]]; then
+  REMOTE="${ORIGINAL_REMOTE}"
+else
+  REMOTE="https://${USERNAME}:${PASSWORD}@${ORIGINAL_REMOTE}"
+fi
 
 git checkout main > /dev/null
 git pull origin main > /dev/null
@@ -30,6 +35,8 @@ elif [ "$SECONDS" -gt 0 ]; then
 else
   git commit -m "$COMMIT_MSG"
 fi
+
+echo "Pushing..."
 git push "$REMOTE" > /dev/null 2>&1
 
 popd > /dev/null
