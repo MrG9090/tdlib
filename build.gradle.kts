@@ -7,7 +7,6 @@
 
 plugins {
     id(libs.plugins.android.library.get().pluginId)
-    alias(libs.plugins.kotlin.android)
     id("tgx-module")
 }
 
@@ -17,4 +16,8 @@ dependencies {
 
 android {
   namespace = "org.drinkless.tdlib"
+
+  defaultConfig {
+    consumerProguardFiles("consumer-rules.pro")
+  }
 }
