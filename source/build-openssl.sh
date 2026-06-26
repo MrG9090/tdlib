@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-OPENSSL_FLAVOR=${1:-shared}
+SHARED_BUILD_OPTION=${1:-shared}
 OPENSSL_SOURCE_DIR=${2:-openssl}
 OPENSSL_INSTALL_DIR=${3:-build/openssl}
 
@@ -31,45 +31,37 @@ pushd "$OPENSSL_SOURCE_DIR" > /dev/null
 # Make sure it's clean build
 make distclean > /dev/null 2>&1 || true
 
+ANDROID_NDK_VERSION=$ANDROID_NDK_VERSION_PRIMARY
+export ANDROID_NDK_ROOT="$ANDROID_SDK_ROOT/ndk/$ANDROID_NDK_VERSION"  # for OpenSSL 3.*.*
+export ANDROID_NDK_HOME="$ANDROID_NDK_ROOT "                          # for OpenSSL 1.1.1
+PATH="$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/$HOST_ARCH/bin:$PATH"
+
+if ! clang --help >/dev/null 2>&1 ; then
+  echo "Error: failed to run clang from Android NDK."
+  if [[ "$OS_NAME" == "linux" ]] ; then
+    echo "Prebuilt Android NDK binaries are linked against glibc, so glibc must be installed."
+  fi
+  exit 1
+fi
+
+ANDROID_API32=16
+ANDROID_API64=21
+if [[ ${ANDROID_NDK_VERSION%%.*} -ge 24 ]] ; then
+  ANDROID_API32=19
+fi
+if [[ ${ANDROID_NDK_VERSION%%.*} -ge 26 ]] ; then
+  ANDROID_API32=21
+fi
+
 for ABI in x86 armeabi-v7a x86_64 arm64-v8a ; do
-  case ${ABI} in
-    arm64-v8a | x86_64)
-      ANDROID_NDK_VERSION=$ANDROID_NDK_VERSION_PRIMARY
-    ;;
-	  armeabi-v7a | x86)
-      ANDROID_NDK_VERSION=$ANDROID_NDK_VERSION_LEGACY
-    ;;
-  esac
-
-  ANDROID_NDK="$ANDROID_SDK_ROOT/ndk/$ANDROID_NDK_VERSION"
-
-  export ANDROID_NDK_ROOT="$ANDROID_NDK" # for OpenSSL 3.0
-  export ANDROID_NDK_HOME="$ANDROID_NDK" # for OpenSSL 1.1.1
-
-  PATH="$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/$HOST_ARCH/bin:$PATH"
-
-  if ! clang --help >/dev/null 2>&1 ; then
-    echo "Error: failed to run clang from Android NDK."
-    if [[ "$OS_NAME" == "linux" ]] ; then
-      echo "Prebuilt Android NDK binaries are linked against glibc, so glibc must be installed."
-    fi
-    exit 1
-  fi
-
-  ANDROID_API32=16
-  ANDROID_API64=21
-  if [[ ${ANDROID_NDK_VERSION%%.*} -ge 24 ]] ; then
-    ANDROID_API32=19
-  fi
-
   if [[ $ABI == "x86" ]] ; then
-    ./Configure android-x86 $OPENSSL_FLAVOR -U__ANDROID_API__ -D__ANDROID_API__=$ANDROID_API32 || exit 1
+    ./Configure android-x86 ${SHARED_BUILD_OPTION} -U__ANDROID_API__ -D__ANDROID_API__=$ANDROID_API32 || exit 1
   elif [[ $ABI == "x86_64" ]] ; then
-    ./Configure android-x86_64 $OPENSSL_FLAVOR -U__ANDROID_API__ -D__ANDROID_API__=$ANDROID_API64 || exit 1
+    LDFLAGS=-Wl,-z,max-page-size=16384 ./Configure android-x86_64 ${SHARED_BUILD_OPTION} -U__ANDROID_API__ -D__ANDROID_API__=$ANDROID_API64 || exit 1
   elif [[ $ABI == "armeabi-v7a" ]] ; then
-    ./Configure android-arm $OPENSSL_FLAVOR -U__ANDROID_API__ -D__ANDROID_API__=$ANDROID_API32 -D__ARM_MAX_ARCH__=8 || exit 1
+    ./Configure android-arm ${SHARED_BUILD_OPTION} -U__ANDROID_API__ -D__ANDROID_API__=$ANDROID_API32 -D__ARM_MAX_ARCH__=8 || exit 1
   elif [[ $ABI == "arm64-v8a" ]] ; then
-    ./Configure android-arm64 $OPENSSL_FLAVOR -U__ANDROID_API__ -D__ANDROID_API__=$ANDROID_API64 || exit 1
+    LDFLAGS=-Wl,-z,max-page-size=16384 ./Configure android-arm64 ${SHARED_BUILD_OPTION} -U__ANDROID_API__ -D__ANDROID_API__=$ANDROID_API64 || exit 1
   fi
 
   sed -i.bak 's/-O3/-O3 -ffunction-sections -fdata-sections/g' Makefile || exit 1
@@ -77,18 +69,20 @@ for ABI in x86 armeabi-v7a x86_64 arm64-v8a ; do
   make depend -s || exit 1
   make SHLIB_VERSION_NUMBER= SHLIB_EXT=x.so -j4 -s || exit 1
 
-  echo "Copying to $OPENSSL_INSTALL_DIR/$ABI"
-  mkdir -p $OPENSSL_INSTALL_DIR/$ABI/lib/ || exit 1
-  ((test -f "libcrypto.so" && test -f "libssl.so" && cp -a $(readlink "libcrypto.so") $(readlink "libssl.so") "libcrypto.so" "libssl.so" $OPENSSL_INSTALL_DIR/$ABI/lib/.) || (test -f libssl.a && test -f libcrypto.a && cp libcrypto.a libssl.a $OPENSSL_INSTALL_DIR/$ABI/lib/)) || exit 1
-  cp -r include $OPENSSL_INSTALL_DIR/$ABI/ || exit 1
-  pushd $OPENSSL_INSTALL_DIR/$ABI/lib
+  (test -f "libcrypto.so" && test -f "libssl.so") || exit 1
 
-  popd
+  # echo "Stripping... $(readlink -f "libcrypto.so") and $(readlink -f "libssl.so")"
+  # cp "$(readlink -f "libcrypto.so")" "$(readlink -f "libcrypto.so").dbg"
+  # cp "$(readlink -f "libcrypto.so")" "$(readlink -f "libssl.so").dbg"
+  # "$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/$HOST_ARCH/bin/llvm-strip" --strip-debug --strip-unneeded "$(readlink -f "libcrypto.so")" || exit 1
+  # "$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/$HOST_ARCH/bin/llvm-strip" --strip-debug --strip-unneeded "$(readlink -f "libssl.so")" || exit 1
+
+  echo "Copying to $OPENSSL_INSTALL_DIR/$ABI"
+  mkdir -p "$OPENSSL_INSTALL_DIR/$ABI/lib" || exit 1
+  (cp -a "$(readlink -f "libcrypto.so")" "$(readlink -f "libssl.so")" "libcrypto.so" "libssl.so" "$OPENSSL_INSTALL_DIR/$ABI/lib/.") || exit 1
+  cp -r include "$OPENSSL_INSTALL_DIR/$ABI/." || exit 1
 
   echo "Built OpenSSL for $ABI with NDK $ANDROID_NDK_VERSION: $OPENSSL_INSTALL_DIR/$ABI"
-  ls $OPENSSL_INSTALL_DIR/$ABI/lib
-  echo "Comparsion: "
-  ls
 
   make distclean || exit 1
 done
