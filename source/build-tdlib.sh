@@ -4,6 +4,7 @@ TDLIB_SOURCE_DIR=${1:-td}
 TDLIB_INSTALL_DIR=${2:-build/td}
 OPENSSL_INSTALL_DIR=${3:-build/openssl}
 ANDROID_STL=${4:-c++_static}
+ANDROID_SDK_PACKAGE=${5:-android-37.0}
 TDLIB_BUILD_SCRIPT="$(pwd)/build-tdlib-impl.sh"
 
 source "$(pwd)/setup.sh" --light
@@ -52,7 +53,7 @@ pushd "$TDLIB_SOURCE_DIR/example/android" > /dev/null || exit 1
 rm -rf build-native build-arm64-v8a build-armeabi-v7a build-x86_64 build-x86 tdlib
 rm build-tdlib.sh
 cp "$TDLIB_BUILD_SCRIPT" build-tdlib.sh
-./build-tdlib.sh "$ANDROID_SDK_ROOT" "$ANDROID_NDK_VERSION_PRIMARY" "$ANDROID_NDK_VERSION_LEGACY" "$OPENSSL_INSTALL_DIR" "$ANDROID_STL" || exit 1
+./build-tdlib.sh "$ANDROID_SDK_ROOT" "$ANDROID_NDK_VERSION_PRIMARY" "$OPENSSL_INSTALL_DIR" "$ANDROID_STL" Java "$ANDROID_SDK_PACKAGE" || exit 1
 popd > /dev/null
 
 pushd "$TDLIB_SOURCE_DIR" > /dev/null || exit 1
