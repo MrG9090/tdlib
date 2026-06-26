@@ -67,19 +67,27 @@ for ABI in x86 armeabi-v7a x86_64 arm64-v8a ; do
   sed -i.bak 's/-O3/-O3 -ffunction-sections -fdata-sections/g' Makefile || exit 1
 
   make depend -s || exit 1
-  make SHLIB_VERSION_NUMBER= SHLIB_EXT=x.so -j4 -s || exit 1
+  make -j4 -s || exit 1
 
-  (test -f "libcrypto.so" && test -f "libssl.so") || exit 1
+  (test -f libcrypto.so && test -f libssl.so) || exit 1
 
-  # echo "Stripping... $(readlink -f "libcrypto.so") and $(readlink -f "libssl.so")"
-  # cp "$(readlink -f "libcrypto.so")" "$(readlink -f "libcrypto.so").dbg"
-  # cp "$(readlink -f "libcrypto.so")" "$(readlink -f "libssl.so").dbg"
-  # "$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/$HOST_ARCH/bin/llvm-strip" --strip-debug --strip-unneeded "$(readlink -f "libcrypto.so")" || exit 1
-  # "$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/$HOST_ARCH/bin/llvm-strip" --strip-debug --strip-unneeded "$(readlink -f "libssl.so")" || exit 1
+  echo "Patching SONAME..."
+
+  rm -f libcryptox.so libsslx.so
+
+  mv libcrypto.so libcryptox.so
+  mv libssl.so libsslx.so
+
+  patchelf --set-soname libcryptox.so libcryptox.so
+  patchelf --set-soname libsslx.so libsslx.so
+  patchelf --replace-needed libcrypto.so libcryptox.so libsslx.so
+
+  ln -sf libcryptox.so libcrypto.so
+  ln -sf libsslx.so libssl.so
 
   echo "Copying to $OPENSSL_INSTALL_DIR/$ABI"
   mkdir -p "$OPENSSL_INSTALL_DIR/$ABI/lib" || exit 1
-  (cp -a "$(readlink -f "libcrypto.so")" "$(readlink -f "libssl.so")" "libcrypto.so" "libssl.so" "$OPENSSL_INSTALL_DIR/$ABI/lib/.") || exit 1
+  (cp -a libcryptox.so libcrypto.so libsslx.so libssl.so "$OPENSSL_INSTALL_DIR/$ABI/lib/.") || exit 1
   cp -r include "$OPENSSL_INSTALL_DIR/$ABI/." || exit 1
 
   echo "Built OpenSSL for $ABI with NDK $ANDROID_NDK_VERSION: $OPENSSL_INSTALL_DIR/$ABI"
